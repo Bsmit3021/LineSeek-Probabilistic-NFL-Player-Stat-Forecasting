@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lineseek"
+version = "0.1.0"
+description = "NFL line modeling: ingest, features, models, simulation, grading"
+requires-python = ">=3.12"
+dependencies = [
+    "nflreadpy==0.1.5",
+    "duckdb==1.5.5",
+    "polars==1.44.2",
+    "pyarrow==25.0.1",
+    "pandas==3.0.6",
+    "numpy==2.5.3",
+    "scikit-learn==1.9.1",
+]
+
+[project.optional-dependencies]
+mr2 = ["lightgbm==4.7.0"]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.16.8",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["ingest", "features", "models", "sim", "grade", "alerts", "app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

@@ -1,0 +1,15 @@
+data/warehouse.duckdb
+data/warehouse.duckdb.wal
+data/raw/*
+!data/raw/.gitkeep
+__pycache__/
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+*.pem
+*.key
+secrets/
+.DS_Store
