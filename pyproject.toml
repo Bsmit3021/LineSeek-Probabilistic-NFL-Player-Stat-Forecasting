@@ -25,7 +25,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["ingest", "features", "models", "sim", "grade", "alerts", "app"]
+packages = ["src/lineseek"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
