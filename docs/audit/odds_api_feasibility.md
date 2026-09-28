@@ -23,9 +23,23 @@ Probe: `python scripts/odds_api_probe.py` (needs `ODDS_API_KEY`; spent 3 credits
 
 - Live: one full-slate snapshot ≈ 16 games × 5 = 80 credits. Free tier ≈ 6 slates/month;
   20K ≈ 250 slates/month.
-- Backfill for 2023–2025: 855 games × 5 markets × 10 ≈ 42.75K credits per snapshot time.
-  Opening + closing ≈ 85.5K, which fits one month of the $59 100K plan and supports both
-  CLV-style and closing-line backtests.
+- Backfill for 2023–2025 uses two fixed snapshots per game (see below):
+  855 games × 5 markets × 2 snapshots × 10 = **85,500 credits**. Add about 130 credits for
+  `/historical/.../events` lookups (1 credit each; 3 seasons × 22 weeks × 2 snapshot times). That fits
+  one month of the $59 100K plan and supports both CLV-style and closing-line backtests.
+
+## Backfill snapshot definition
+
+Each game gets exactly two historical snapshots, requested with the `date` parameter (the
+provider returns the latest snapshot at or before `date`):
+
+| Snapshot | Requested `date` | Definition (`lineseek.contracts.temporal`) |
+|---|---|---|
+| `forecast_time` | latest Wednesday 12:00 ET strictly before kickoff, stored in UTC | `forecast_time_utc(kickoff)` |
+| `closing` | kickoff − 1 s | `closing_snapshot_time_utc(kickoff)` |
+
+There is no first-appearance search. True opening lines come from our own live polling going
+forward, not from the backfill.
 
 ## Integration risks
 
@@ -37,9 +51,10 @@ Probe: `python scripts/odds_api_probe.py` (needs `ODDS_API_KEY`; spent 3 credits
   matches `kickoff_utc`.
 - Suspended markets vanish about 15 minutes after their last update, so closing lines must be
   captured before kickoff.
-- "Opening" is the first snapshot in which a market appears, so finding it means scanning
-  backwards with `previous_timestamp`. Discovery calls cost extra on top of the 42.75K.
+- Props may not be posted yet at the Wednesday forecast time, especially for Sunday/Monday games.
+  Those games get no `forecast_time` line; empty responses cost nothing. Coverage has to be
+  measured once the backfill runs.
 
 **Verdict:** feasible. Live capture works on the current free key for spot checks. Backtesting
-against historical lines needs a paid plan: one month of the 100K tier covers opening and
-closing snapshots.
+against historical lines needs a paid plan: one month of the 100K tier covers forecast-time
+and closing snapshots.

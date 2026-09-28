@@ -22,7 +22,11 @@ ingestion is built.
    - *Market:* sportsbook rules. Non-participants are void. Participants without a stats row
      score 0.
    Participation is an explicit input (`prop_labels.played`), never inferred from a missing
-   stats row, because zero-touch participants may have no row.
+   stats row, because zero-touch participants may have no row. `played` =
+   (offense_snaps + st_snaps) > 0 from nflreadpy snap counts, with POSTGAME quality
+   (`lineseek.grade.participation`). PFR ids are mapped to GSIS ids via the nflverse players
+   table, then an exact roster name/team/season match, then the reviewed
+   `grade/pfr_gsis_overrides.csv`. Any other unmatched id raises.
 4. **Identifiers:** nflverse `game_id` and GSIS `player_id` are canonical. Provider IDs and
    names are stored raw and mapped onto them.
 5. **Time:** all timestamps are tz-aware UTC. Every record carries `available_at` and
@@ -40,6 +44,8 @@ ingestion is built.
    injuries (audit: `docs/audit/phase1_sources.md`).
 9. **Odds provider:** The Odds API (feasibility: `docs/audit/odds_api_feasibility.md`).
    Full ingestion is deferred. Historical backtests are blocked until a paid plan is chosen.
+   The backfill takes two fixed snapshots per game: `forecast_time` (Wednesday 12:00 ET) and
+   `closing` (last snapshot before kickoff). Opening lines come only from our live polling.
 10. **External reference architectures:** BetBetter was considered and dropped; no
    external architecture is adopted.
 
@@ -49,6 +55,6 @@ ingestion is built.
 - 2024-and-earlier depth charts and all weekly roster statuses cannot be used as features
   until a timestamp rule is justified.
 - Name-based player matching for odds is a required Phase 1+ component.
-- Market-track grading needs a participation source. None of the Phase 1 sources records
-  snaps reliably; `load_snap_counts` or PBP participation is the candidate. Until one is
-  chosen, market-track grades fail loudly rather than guessing.
+- Snap counts are added to the Phase 1 sources to supply participation.
+- `assert_as_of` rejects any row tagged POSTGAME or UNKNOWN, whatever its timestamp
+  (contracts 0.2.0).

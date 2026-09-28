@@ -10,6 +10,8 @@ from lineseek.contracts import (
     TemporalQuality,
     Track,
     assert_as_of,
+    closing_snapshot_time_utc,
+    forecast_time_utc,
     grade_outcome,
     injury_report_available_at,
     kickoff_utc,
@@ -45,6 +47,26 @@ def test_kickoff_is_eastern_to_utc_across_dst():
 def test_injury_rule_is_conservative_day_before_4pm_et():
     assert injury_report_available_at("2026-09-27") == datetime(2026, 9, 26, 20, 0, tzinfo=UTC)
     assert injury_report_available_at("2026-09-27") < kickoff_utc("2026-09-27", "13:00")
+
+
+@pytest.mark.parametrize(
+    ("gameday", "gametime", "expected"),
+    [
+        ("2026-09-27", "13:00", datetime(2026, 9, 23, 16, tzinfo=UTC)),  # Sun, EDT
+        ("2026-09-24", "20:15", datetime(2026, 9, 23, 16, tzinfo=UTC)),  # Thu
+        ("2026-09-28", "20:15", datetime(2026, 9, 23, 16, tzinfo=UTC)),  # Mon
+        ("2026-11-08", "13:00", datetime(2026, 11, 4, 17, tzinfo=UTC)),  # Sun after DST ends
+        ("2024-12-25", "13:00", datetime(2024, 12, 25, 17, tzinfo=UTC)),  # Wed game, same day
+        ("2024-12-25", "11:00", datetime(2024, 12, 18, 17, tzinfo=UTC)),  # Wed before noon
+    ],
+)
+def test_forecast_time_is_latest_wednesday_noon_et(gameday, gametime, expected):
+    assert forecast_time_utc(kickoff_utc(gameday, gametime)) == expected
+
+
+def test_closing_snapshot_time_is_just_before_kickoff():
+    k = kickoff_utc("2026-09-27", "13:00")
+    assert closing_snapshot_time_utc(k) == datetime(2026, 9, 27, 16, 59, 59, tzinfo=UTC)
 
 
 def test_provenance_rules():

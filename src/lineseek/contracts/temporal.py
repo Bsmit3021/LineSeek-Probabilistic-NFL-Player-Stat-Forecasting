@@ -19,6 +19,9 @@ import polars as pl
 
 NFL_TZ = ZoneInfo("America/New_York")
 INJURY_REPORT_LOCAL_TIME = time(16, 0)
+FORECAST_RUN_WEEKDAY = 2  # Wednesday
+FORECAST_RUN_LOCAL_TIME = time(12, 0)  # ET
+CLOSING_OFFSET = timedelta(seconds=1)  # closing = last snapshot strictly before kickoff
 
 
 class TemporalQuality(StrEnum):
@@ -61,6 +64,7 @@ SOURCE_TEMPORAL_QUALITY: dict[tuple[str, str], TemporalQuality] = {
     ("schedules", "lines"): TemporalQuality.UNKNOWN,
     ("pbp", "plays"): TemporalQuality.POSTGAME,
     ("player_stats", "stats"): TemporalQuality.POSTGAME,
+    ("snap_counts", "snaps"): TemporalQuality.POSTGAME,
     ("injuries", "2024_and_earlier"): TemporalQuality.EXACT,
     ("injuries", "2025_and_later"): TemporalQuality.INFERRED,
     ("depth_charts", "2024_and_earlier"): TemporalQuality.UNKNOWN,
@@ -88,10 +92,32 @@ def injury_report_available_at(gameday: str | date) -> datetime:
     return local.astimezone(UTC)
 
 
+def forecast_time_utc(kickoff: datetime) -> datetime:
+    """Latest Wednesday 12:00 ET strictly before kickoff; the weekly forecast lock, in UTC."""
+    local_kick = kickoff.astimezone(NFL_TZ)
+    d = local_kick.date() - timedelta(days=(local_kick.weekday() - FORECAST_RUN_WEEKDAY) % 7)
+    run = datetime.combine(d, FORECAST_RUN_LOCAL_TIME, tzinfo=NFL_TZ)
+    if run >= local_kick:
+        run = datetime.combine(d - timedelta(days=7), FORECAST_RUN_LOCAL_TIME, tzinfo=NFL_TZ)
+    return run.astimezone(UTC)
+
+
+def closing_snapshot_time_utc(kickoff: datetime) -> datetime:
+    """Request time for the closing line: provider returns the last snapshot at or before it."""
+    return kickoff.astimezone(UTC) - CLOSING_OFFSET
+
+
+NOT_FEATURE_QUALITY = frozenset({TemporalQuality.POSTGAME.value, TemporalQuality.UNKNOWN.value})
+
+
 def assert_as_of(df: pl.DataFrame, decision_time: datetime, col: str = "available_at") -> None:
     """Leakage guard: fail if any row was not available at decision_time."""
     if decision_time.utcoffset() != timedelta(0):
         raise ValueError("decision_time must be tz-aware UTC")
+    if "temporal_quality" in df.columns:
+        n = df.filter(pl.col("temporal_quality").is_in(list(NOT_FEATURE_QUALITY))).height
+        if n:
+            raise ValueError(f"{n} row(s) have postgame/unknown temporal quality")
     bad = df.filter(pl.col(col).is_null() | (pl.col(col) > decision_time))
     if bad.height:
         raise ValueError(f"{bad.height} row(s) not available as of {decision_time.isoformat()}")

@@ -22,11 +22,13 @@ from lineseek.contracts.temporal import (
     Provenance,
     TemporalQuality,
     assert_as_of,
+    closing_snapshot_time_utc,
+    forecast_time_utc,
     injury_report_available_at,
     kickoff_utc,
 )
 
-CONTRACT_VERSION = "0.1.0"
+CONTRACT_VERSION = "0.2.0"
 
 __all__ = [
     "ARTIFACT_SCHEMAS",
@@ -43,6 +45,8 @@ __all__ = [
     "TemporalQuality",
     "Track",
     "assert_as_of",
+    "closing_snapshot_time_utc",
+    "forecast_time_utc",
     "grade_outcome",
     "injury_report_available_at",
     "kickoff_utc",
