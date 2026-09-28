@@ -33,6 +33,13 @@ def _load(source: Source, season: int) -> pl.DataFrame:
     raise AssertionError("unreachable")
 
 
+def filter_weeks(df: pl.DataFrame, weeks: list[int]) -> pl.DataFrame:
+    if "week" in df.columns:
+        return df.filter(pl.col("week").is_in(weeks))
+    # Snapshot-format depth charts have no week: keep the latest snapshot.
+    return df.filter(pl.col("snapshot_at") == pl.col("snapshot_at").max())
+
+
 def pull(
     name: str,
     season: int,
@@ -45,6 +52,8 @@ def pull(
     source = SOURCES[name]
     pulled_at = datetime.now(UTC)
     df = source.build(_load(source, season), season, pulled_at, schedules)
+    if weeks is not None:
+        df = filter_weeks(df, weeks)
     if completed_game_ids is not None and source.completed_games_only:
         df = df.filter(pl.col("game_id").is_in(list(completed_game_ids)))
     manifest = write_snapshot(
@@ -85,7 +94,8 @@ def backfill(
 def weekly(season: int, week: int, root: Path | None = None) -> list[Manifest]:
     """Snapshot the current week; stats and snaps keep completed games only."""
     out: list[Manifest] = []
-    manifest, schedules = pull("schedules", season, weeks=[week], root=root)
+    # Full-season schedule: injuries need every gameday, and it carries upcoming kickoffs.
+    manifest, schedules = pull("schedules", season, root=root)
     out.append(manifest)
     completed = schedules.filter(pl.col("result").is_not_null())["game_id"].to_list()
     for name in WEEKLY_SOURCES[1:]:

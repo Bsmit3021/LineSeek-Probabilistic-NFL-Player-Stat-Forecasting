@@ -135,7 +135,8 @@ class Source:
 
     def build(self, raw: pl.DataFrame, season: int, observed_at: datetime,
               schedules: pl.DataFrame | None = None) -> pl.DataFrame:
-        return self.prepare(conform(raw, self.name, season), season, observed_at, schedules)
+        df = self.prepare(conform(raw, self.name, season), season, observed_at, schedules)
+        return validate_frame(df, "raw_pull")
 
 
 SOURCES: dict[str, Source] = {

@@ -7,7 +7,8 @@
 - Ingest (network, writes to `$LINESEEK_DATA_ROOT`, default `data/raw`, never committed):
   - `.venv/bin/lineseek-ingest backfill [--seasons 2018-2026] [--sources a,b] [--force]` (skips existing source/season)
   - `.venv/bin/lineseek-ingest weekly [--season S --week W]`; scheduled via `scripts/ingest_weekly.sh`
-    (example launchd plist in `scripts/launchd/`)
+    (example launchd plist in `scripts/launchd/`). Schedules are full-season; other sources are
+    filtered to the week (depth charts: latest snapshot; stats/snaps: completed games only).
   - `.venv/bin/lineseek-ingest injury-rule-report`
 - Schema drift fails pulls: review, then regenerate with `scripts/freeze_raw_schemas.py` or add a cast in `contracts/raw.py`.
 - Network scripts: `scripts/audit_phase1.py` (nflreadpy), `scripts/odds_api_probe.py` (needs `ODDS_API_KEY`, spends credits).

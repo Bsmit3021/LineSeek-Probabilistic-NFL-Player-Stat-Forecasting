@@ -19,6 +19,8 @@ _PROVENANCE = {
 }
 
 ARTIFACT_SCHEMAS: dict[str, dict[str, pl.DataType]] = {
+    # Every raw nflverse pull: source columns (frozen in raw_schemas.json) plus provenance.
+    "raw_pull": dict(_PROVENANCE),
     # One row per game. kickoff_utc derived via contracts.temporal.kickoff_utc.
     "games": {
         "game_id": pl.String,

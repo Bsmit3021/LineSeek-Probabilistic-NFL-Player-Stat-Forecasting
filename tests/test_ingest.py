@@ -151,6 +151,30 @@ def test_cancelled_game_injuries_use_reviewed_gameday():
     assert set(out["rule_available_at"]) == {injury_report_available_at("2023-01-02")}
 
 
+def test_weekly_pull_keeps_only_requested_week(tmp_path, fake_loaders):
+    snaps = fixture("snap_counts_2025")
+    two_weeks = pl.concat([snaps, snaps.head(2).with_columns(pl.lit(2, dtype=snaps["week"].dtype)
+                                                             .alias("week"))])
+    fake_loaders(snap_counts=two_weeks)
+    _, df = pipeline.pull("snap_counts", 2025, weeks=[2], root=tmp_path)
+    assert df.height == 2 and set(df["week"]) == {2}
+
+
+def test_weekly_depth_chart_keeps_latest_snapshot():
+    dc = SOURCES["depth_charts"].build(fixture("depth_charts_2025"), 2025, T0)
+    older = dc.head(2).with_columns(pl.col("snapshot_at") - pl.duration(days=7))
+    out = pipeline.filter_weeks(pl.concat([dc, older]), [1])
+    assert out.height == dc.height and out["snapshot_at"].n_unique() == 1
+
+
+def test_pull_missing_provenance_fails(monkeypatch):
+    monkeypatch.setitem(SOURCES, "snap_counts", Source(
+        "snap_counts", SOURCES["snap_counts"].loader, lambda df, *_: df, True,
+    ))
+    with pytest.raises(ValueError, match="raw_pull"):
+        SOURCES["snap_counts"].build(fixture("snap_counts_2025"), 2025, T0)
+
+
 def test_pull_filters_to_completed_games(tmp_path, fake_loaders):
     snaps = fixture("snap_counts_2025")
     keep = snaps["game_id"][0]
