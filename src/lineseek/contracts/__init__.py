@@ -28,7 +28,7 @@ from lineseek.contracts.temporal import (
     kickoff_utc,
 )
 
-CONTRACT_VERSION = "0.2.0"
+CONTRACT_VERSION = "0.3.0"
 
 __all__ = [
     "ARTIFACT_SCHEMAS",

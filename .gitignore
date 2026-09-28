@@ -1,7 +1,8 @@
-data/warehouse.duckdb
-data/warehouse.duckdb.wal
+*.duckdb
+*.duckdb.wal
 data/raw/*
 !data/raw/.gitkeep
+logs/
 __pycache__/
 .venv/
 *.egg-info/

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Example only. Edit the path, copy to ~/Library/LaunchAgents/, then: launchctl load <file>. -->
+<!-- Times are machine-local: Wed 11:00 (before the 12:00 ET forecast lock) and Sat 12:00 (final injury statuses). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>ai.lineseek.ingest-weekly</string>
+  <key>ProgramArguments</key>
+  <array><string>/Users/1yungbr1an/NFL_SBD/lineseek/scripts/ingest_weekly.sh</string></array>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <key>RunAtLoad</key><false/>
+</dict>
+</plist>

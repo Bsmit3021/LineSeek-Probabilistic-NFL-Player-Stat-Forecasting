@@ -17,6 +17,9 @@ dependencies = [
     "scikit-learn==1.9.1",
 ]
 
+[project.scripts]
+lineseek-ingest = "lineseek.ingest.cli:main"
+
 [project.optional-dependencies]
 mr2 = ["lightgbm==4.7.0"]
 dev = [

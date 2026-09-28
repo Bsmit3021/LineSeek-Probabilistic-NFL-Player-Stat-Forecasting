@@ -36,12 +36,17 @@ ingestion is built.
    (EXACT/OBSERVED/INFERRED/POSTGAME/UNKNOWN). POSTGAME is never used as a feature. UNKNOWN is
    excluded from features unless a later ADR defines a rule for it. INFERRED requires a
    written, conservative rule.
-7. **Storage:** raw pulls are Parquet in `data/raw/{source}/season=YYYY/` with provenance
-   columns. Derived artifacts (games, prop_labels, prop_lines, features, predictions, grades)
+7. **Storage:** raw pulls are append-only Parquet at
+   `$LINESEEK_DATA_ROOT/{source}/season=YYYY/{pulled_at}_{sha12}.parquet` (default
+   `data/raw`), with provenance columns and a `.manifest.json` sidecar per pull
+   (`lineseek.ingest.snapshot`). Files are created exclusively and never overwritten. The
+   root is configurable so storage can move to Cloudflare R2 later. Derived artifacts (games, prop_labels, prop_lines, features, predictions, grades)
    are DuckDB tables whose schemas are in `contracts/artifacts.py`. Polars is the dataframe
    engine.
-8. **Phase 1 sources:** nflreadpy schedules, PBP, player stats, weekly rosters, depth charts,
-   injuries (audit: `docs/audit/phase1_sources.md`).
+8. **Phase 1 sources:** nflreadpy schedules, PBP, player stats, snap counts, weekly rosters,
+   depth charts, injuries, 2018–2026 (audit: `docs/audit/phase1_sources.md`). Every pull is
+   checked against frozen raw schemas, and drift fails the pull. The weekly run is local only
+   (`scripts/ingest_weekly.sh`, launchd example); CI scheduling waits on a storage decision.
 9. **Odds provider:** The Odds API (feasibility: `docs/audit/odds_api_feasibility.md`).
    Full ingestion is deferred. Historical backtests are blocked until a paid plan is chosen.
    The backfill takes two fixed snapshots per game: `forecast_time` (Wednesday 12:00 ET) and
