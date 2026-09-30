@@ -20,6 +20,7 @@ dependencies = [
 [project.scripts]
 lineseek-ingest = "lineseek.ingest.cli:main"
 lineseek-labels = "lineseek.grade.cli:main"
+lineseek-features = "lineseek.features.cli:main"
 
 [project.optional-dependencies]
 mr2 = ["lightgbm==4.7.0"]

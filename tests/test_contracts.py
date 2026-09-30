@@ -135,12 +135,21 @@ def test_validate_frame():
     naive = _empty("games").with_columns(pl.col("kickoff_utc").dt.replace_time_zone(None))
     with pytest.raises(ContractViolation, match="wrong_dtype"):
         validate_frame(naive, "games")
-    t = datetime(2026, 9, 27, 16, tzinfo=UTC)
-    leaky = pl.DataFrame(
-        {"game_id": ["g"], "player_id": ["p"], "decision_time": [t],
-         "max_available_at": [datetime(2026, 9, 27, 17, tzinfo=UTC)],
-         "worst_temporal_quality": ["exact"], "feature_set_version": ["v"]},
+    t = datetime(2026, 9, 23, 16, tzinfo=UTC)
+    ok = pl.DataFrame(
+        {"game_id": ["2026_03_LAC_BUF"], "player_id": ["00-0034857"], "season": [2026],
+         "week": [3], "team": ["BUF"], "opponent": ["LAC"], "market": ["rush_yds"],
+         "kickoff_utc": [datetime(2026, 9, 27, 17, tzinfo=UTC)], "decision_time": [t],
+         "max_available_at": [datetime(2026, 9, 22, 12, tzinfo=UTC)],
+         "worst_temporal_quality": ["inferred"], "feature_set_version": ["v"]},
         schema=ARTIFACT_SCHEMAS["features"],
     )
+    validate_frame(ok, "features")
+    leaky = ok.with_columns(pl.lit(datetime(2026, 9, 23, 17, tzinfo=UTC)).alias("max_available_at"))
     with pytest.raises(ContractViolation, match="after decision_time"):
         validate_frame(leaky, "features")
+    with pytest.raises(ContractViolation, match="duplicate"):
+        validate_frame(pl.concat([ok, ok]), "features")
+    with pytest.raises(ContractViolation, match="not usable as a feature"):
+        validate_frame(ok.with_columns(pl.lit("postgame").alias("worst_temporal_quality")),
+                       "features")

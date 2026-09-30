@@ -15,6 +15,12 @@
   - `.venv/bin/lineseek-labels build --season 2025` (or `2018-2025`; `--skip-incomplete`)
   - `.venv/bin/lineseek-labels validate <file.parquet>`
   - Needs schedules, player_stats, snap_counts, rosters_weekly and players snapshots for the season.
+- Features (decision-time inputs; ADR 0003) to `$LINESEEK_FEATURES_ROOT` (default `data/features`,
+  never committed); needs the season's labels plus raw snapshots for the season and the one before:
+  - `.venv/bin/lineseek-features build --season 2025` (or `2018-2025`)
+  - `.venv/bin/lineseek-features validate <file.parquet>`
+  - Invariant: a row may only use history with `available_at <= decision_time`; bump
+    `FEATURE_SET_VERSION` when feature definitions change.
 - Schema drift fails pulls: review, then regenerate with `scripts/freeze_raw_schemas.py` or add a cast in `contracts/raw.py`.
 - Network scripts: `scripts/audit_phase1.py` (nflreadpy), `scripts/odds_api_probe.py` (needs `ODDS_API_KEY`, spends credits).
 - Tests use fixtures in `tests/fixtures/`, never live downloads.

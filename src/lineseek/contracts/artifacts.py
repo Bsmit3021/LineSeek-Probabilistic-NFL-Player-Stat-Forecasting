@@ -62,10 +62,17 @@ ARTIFACT_SCHEMAS: dict[str, dict[str, pl.DataType]] = {
         "provider_event_id": pl.String,
         **_PROVENANCE,
     },
-    # Model inputs: one row per (game_id, player_id, decision_time). Feature columns are extra.
+    # Model inputs, unique on (game_id, player_id, market, decision_time); feature columns are
+    # extra and defined per feature-set version. max_available_at is null if nothing contributed.
     "features": {
         "game_id": pl.String,
         "player_id": pl.String,
+        "season": pl.Int32,
+        "week": pl.Int32,
+        "team": pl.String,
+        "opponent": pl.String,
+        "market": pl.String,
+        "kickoff_utc": UTC_TS,
         "decision_time": UTC_TS,
         "max_available_at": UTC_TS,
         "worst_temporal_quality": pl.String,
@@ -110,28 +117,28 @@ def validate_frame(df: pl.DataFrame, artifact: str) -> pl.DataFrame:
     if missing or wrong:
         raise ContractViolation(f"{artifact}: missing={missing} wrong_dtype={wrong}")
     if artifact == "features":
-        leaked = df.filter(pl.col("max_available_at") > pl.col("decision_time")).height
-        if leaked:
-            raise ContractViolation(f"features: {leaked} row(s) use data after decision_time")
+        _validate_features(df)
     if artifact == "prop_labels":
         _validate_prop_labels(df)
     return df
 
 
 PROP_LABEL_KEY = ("game_id", "player_id", "market")
+FEATURE_KEY = ("game_id", "player_id", "market", "decision_time")
+# Target-game outcomes; their presence in a feature artifact is a leak by construction.
+LABEL_ONLY_COLUMNS = ("actual", "played", "label_status")
+FEATURE_QUALITIES = ("exact", "observed", "inferred")
 
 
-def _validate_prop_labels(df: pl.DataFrame) -> None:
-    """Domain rules for prop_labels; all violations are reported together."""
-    actual, played, status = pl.col("actual"), pl.col("played"), pl.col("label_status")
+def _key_checks(artifact: str, key: tuple[str, ...], nullable: tuple[str, ...]) -> dict:
+    """Identifier rules shared by player-game-market artifacts."""
     parts = pl.col("game_id").str.split("_")
     away, home = parts.list.get(2, null_on_oob=True), parts.list.get(3, null_on_oob=True)
-    nonneg = [k for k, m in PROP_MARKETS.items() if m.nonnegative]
-    checks = {
+    return {
         "null required column": pl.any_horizontal(
-            pl.col(c).is_null() for c in ARTIFACT_SCHEMAS["prop_labels"] if c != "actual"
+            pl.col(c).is_null() for c in ARTIFACT_SCHEMAS[artifact] if c not in nullable
         ),
-        "duplicate (game_id, player_id, market)": pl.struct(PROP_LABEL_KEY).is_duplicated(),
+        f"duplicate ({', '.join(key)})": pl.struct(key).is_duplicated(),
         "unsupported market": ~pl.col("market").is_in(list(PROP_MARKETS)),
         "invalid player_id": ~pl.col("player_id").str.contains(PLAYER_ID_RE.pattern),
         "invalid game_id": ~pl.col("game_id").str.contains(GAME_ID_RE.pattern),
@@ -144,6 +151,37 @@ def _validate_prop_labels(df: pl.DataFrame) -> None:
             ((pl.col("team") == away) & (pl.col("opponent") == home))
             | ((pl.col("team") == home) & (pl.col("opponent") == away))
         ),
+    }
+
+
+def _raise_violations(artifact: str, df: pl.DataFrame, checks: dict) -> None:
+    # Nulls are caught by the null check; other rules only fire on definite violations.
+    counts = df.select(e.fill_null(False).sum().alias(k) for k, e in checks.items())
+    problems = [f"{n} row(s) {k}" for k, n in counts.row(0, named=True).items() if n]
+    if problems:
+        raise ContractViolation(f"{artifact}: " + "; ".join(problems))
+
+
+def _validate_features(df: pl.DataFrame) -> None:
+    """Grain, identifier and decision-time rules for features; feature columns are extra."""
+    leaked = [c for c in LABEL_ONLY_COLUMNS if c in df.columns]
+    if leaked:
+        raise ContractViolation(f"features: label-only column(s) present: {leaked}")
+    _raise_violations("features", df, {
+        **_key_checks("features", FEATURE_KEY, ("max_available_at",)),
+        "decision_time not before kickoff": pl.col("decision_time") >= pl.col("kickoff_utc"),
+        "use data after decision_time": pl.col("max_available_at") > pl.col("decision_time"),
+        "worst_temporal_quality not usable as a feature":
+            ~pl.col("worst_temporal_quality").is_in(FEATURE_QUALITIES),
+    })
+
+
+def _validate_prop_labels(df: pl.DataFrame) -> None:
+    """Domain rules for prop_labels; all violations are reported together."""
+    actual, played, status = pl.col("actual"), pl.col("played"), pl.col("label_status")
+    nonneg = [k for k, m in PROP_MARKETS.items() if m.nonnegative]
+    checks = {
+        **_key_checks("prop_labels", PROP_LABEL_KEY, ("actual",)),
         "temporal_quality is not postgame": pl.col("temporal_quality") != "postgame",
         "unknown label_status": ~status.is_in([s.value for s in LabelStatus]),
         "non-finite or non-integer actual": actual.is_not_null()
@@ -157,9 +195,4 @@ def _validate_prop_labels(df: pl.DataFrame) -> None:
         "did_not_play row played or has actual": (status == LabelStatus.DID_NOT_PLAY)
         & (played | actual.is_not_null()),
     }
-    # Nulls are caught by the null check; other rules only fire on definite violations.
-    counts = df.select(e.fill_null(False).sum().alias(k) for k, e in checks.items())
-    counts = counts.row(0, named=True)
-    problems = [f"{n} row(s) {k}" for k, n in counts.items() if n]
-    if problems:
-        raise ContractViolation("prop_labels: " + "; ".join(problems))
+    _raise_violations("prop_labels", df, checks)

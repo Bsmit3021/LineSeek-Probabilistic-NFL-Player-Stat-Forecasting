@@ -27,9 +27,10 @@ from lineseek.contracts.temporal import (
     forecast_time_utc,
     injury_report_available_at,
     kickoff_utc,
+    postgame_stats_available_at,
 )
 
-CONTRACT_VERSION = "0.5.0"
+CONTRACT_VERSION = "0.6.0"
 
 __all__ = [
     "ARTIFACT_SCHEMAS",
@@ -53,6 +54,7 @@ __all__ = [
     "injury_report_available_at",
     "kickoff_utc",
     "parse_game_id",
+    "postgame_stats_available_at",
     "resolve_actual",
     "validate_frame",
     "validate_game_id",

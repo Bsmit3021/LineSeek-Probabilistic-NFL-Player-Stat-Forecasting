@@ -22,6 +22,8 @@ INJURY_REPORT_LOCAL_TIME = time(16, 0)
 FORECAST_RUN_WEEKDAY = 2  # Wednesday
 FORECAST_RUN_LOCAL_TIME = time(12, 0)  # ET
 CLOSING_OFFSET = timedelta(seconds=1)  # closing = last snapshot strictly before kickoff
+# Conservative time after kickoff by which a completed game's player/snap stats are public.
+POSTGAME_STATS_LAG = timedelta(hours=36)
 
 
 class TemporalQuality(StrEnum):
@@ -65,6 +67,9 @@ SOURCE_TEMPORAL_QUALITY: dict[tuple[str, str], TemporalQuality] = {
     ("pbp", "plays"): TemporalQuality.POSTGAME,
     ("player_stats", "stats"): TemporalQuality.POSTGAME,
     ("snap_counts", "snaps"): TemporalQuality.POSTGAME,
+    # Completed games feeding later games' features: kickoff + POSTGAME_STATS_LAG (ADR 0003).
+    ("player_stats", "prior_games"): TemporalQuality.INFERRED,
+    ("snap_counts", "prior_games"): TemporalQuality.INFERRED,
     ("injuries", "2024_and_earlier"): TemporalQuality.EXACT,
     ("injuries", "2025_and_later"): TemporalQuality.INFERRED,
     ("depth_charts", "2024_and_earlier"): TemporalQuality.UNKNOWN,
@@ -102,6 +107,11 @@ def forecast_time_utc(kickoff: datetime) -> datetime:
     if run >= local_kick:
         run = datetime.combine(d - timedelta(days=7), FORECAST_RUN_LOCAL_TIME, tzinfo=NFL_TZ)
     return run.astimezone(UTC)
+
+
+def postgame_stats_available_at(kickoff: datetime) -> datetime:
+    """When a completed game's stats may feed later features; always after its own kickoff."""
+    return kickoff.astimezone(UTC) + POSTGAME_STATS_LAG
 
 
 def closing_snapshot_time_utc(kickoff: datetime) -> datetime:

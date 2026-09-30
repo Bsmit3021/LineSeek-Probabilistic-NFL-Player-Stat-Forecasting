@@ -61,6 +61,17 @@ Frozen raw schemas are in `src/lineseek/contracts/raw_schemas.json`; regenerate 
 - Snap-count `team` is swapped for every row of the 2018 Super Bowl (`2018_21_NE_LA`).
 - Override `CartNa00` (Nate Carter) fixed to `00-0040547`.
 
+### Phase 3 additions (2026-09-30)
+
+- Snap-count team/opponent are swapped on every row of `2018_21_NE_LA` (55/55 rows with a stats
+  row disagree); corrected by `grade.labels.correct_snap_teams`.
+- Overrides fixed (players table has the gsis but no pfr_id; name, team, position and games
+  match): `WillRo08`→`00-0037451` (Rod Williams TE PIT 2023–24, had targets with no snaps),
+  `MeadNa00`→`00-0035108`, `BrowJo03`→`00-0032835`. `OkoyCJ00` stays excluded (no verified match).
+- Stats vs game-day roster team disagree for 0 players in 2018–2025.
+- 10 team-games in 2020–21 follow a Tuesday/Wednesday game whose stats are not available
+  (kickoff + 36 h) by the next Wednesday lock.
+
 ### Backfill (one snapshot per source × season, 2018–2026)
 
 | Source | Rows | Parquet MB |

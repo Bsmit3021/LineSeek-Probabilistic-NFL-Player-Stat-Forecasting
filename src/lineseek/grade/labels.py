@@ -27,6 +27,10 @@ STAT_COLUMNS = [m.stat_column for m in PROP_MARKETS.values()]
 LABEL_SOURCE = "player_stats+snap_counts"
 # player_stats uses current codes for relocated teams (2018-19 Raiders are LV, schedules OAK).
 PLAYER_STATS_TEAM_ALIASES = {"LV": "OAK"}
+# The same relocation table read as franchise continuity across seasons (OAK is today's LV).
+FRANCHISE_CODES = {old: new for new, old in PLAYER_STATS_TEAM_ALIASES.items()}
+# Reviewed games whose snap-count team/opponent labels are swapped on every row.
+SNAP_TEAM_SWAPPED_GAMES = ("2018_21_NE_LA",)
 
 
 class LabelIntegrityError(ValueError):
@@ -48,16 +52,25 @@ def labels_root() -> Path:
     return Path(os.environ.get(LABELS_ROOT_ENV, DEFAULT_LABELS_ROOT))
 
 
-def _fail(msg: str, df: pl.DataFrame) -> None:
+def _fail(msg: str, df: pl.DataFrame, exc: type[ValueError] = LabelIntegrityError) -> None:
     if df.height:
-        raise LabelIntegrityError(f"{df.height} {msg}: {df.head(10).rows()}")
+        raise exc(f"{df.height} {msg}: {df.head(10).rows()}")
 
 
 def _any_market_activity() -> pl.Expr:
     return pl.any_horizontal(pl.col(c) != 0 for c in STAT_COLUMNS)
 
 
-def _team_games(games: pl.DataFrame) -> pl.DataFrame:
+def correct_snap_teams(sn: pl.DataFrame) -> pl.DataFrame:
+    """Swap team/opponent back for reviewed games where snap counts label them reversed."""
+    swapped = pl.col("game_id").is_in(list(SNAP_TEAM_SWAPPED_GAMES))
+    return sn.with_columns(
+        pl.when(swapped).then(pl.col("opponent")).otherwise(pl.col("team")).alias("team"),
+        pl.when(swapped).then(pl.col("team")).otherwise(pl.col("opponent")).alias("opponent"),
+    )
+
+
+def team_games(games: pl.DataFrame) -> pl.DataFrame:
     return pl.concat([
         games.select("game_id", "season", "week", pl.col(side).alias("team"))
         for side in ("home_team", "away_team")
@@ -66,7 +79,7 @@ def _team_games(games: pl.DataFrame) -> pl.DataFrame:
 
 def normalize_stats_teams(ps: pl.DataFrame, games: pl.DataFrame) -> pl.DataFrame:
     """Map player_stats team codes onto schedule codes, only where the game has that team."""
-    tg = _team_games(games).select("game_id", pl.col("team").alias("_sched_team"))
+    tg = team_games(games).select("game_id", pl.col("team").alias("_sched_team"))
     for alias, canonical in PLAYER_STATS_TEAM_ALIASES.items():
         hit = tg.filter(pl.col("_sched_team") == canonical)
         ps = ps.join(hit, on="game_id", how="left").with_columns(
@@ -76,22 +89,61 @@ def normalize_stats_teams(ps: pl.DataFrame, games: pl.DataFrame) -> pl.DataFrame
     return ps
 
 
-def _check_stats(ps: pl.DataFrame, games: pl.DataFrame) -> None:
+def check_stats(ps: pl.DataFrame, games: pl.DataFrame, exc: type[ValueError] = LabelIntegrityError,
+                columns: tuple[str, ...] = tuple(STAT_COLUMNS)) -> None:
     _fail("duplicate player_stats (game_id, player_id)",
           ps.filter(pl.struct("game_id", "player_id").is_duplicated())
-          .select("game_id", "player_id"))
+          .select("game_id", "player_id"), exc)
     _fail("player_stats rows with a null market stat",
-          ps.filter(pl.any_horizontal(pl.col(c).is_null() for c in STAT_COLUMNS))
-          .select("game_id", "player_id"))
+          ps.filter(pl.any_horizontal(pl.col(c).is_null() for c in columns))
+          .select("game_id", "player_id"), exc)
     _fail("player_stats rows for games that are not completed",
-          ps.join(games, on="game_id", how="anti").select("game_id", "player_id"))
+          ps.join(games, on="game_id", how="anti").select("game_id", "player_id"), exc)
     _fail("player_stats rows whose season/week/team disagree with schedules",
-          ps.join(_team_games(games), on=["game_id", "season", "week", "team"], how="anti")
-          .select("game_id", "player_id", "season", "week", "team"))
+          ps.join(team_games(games), on=["game_id", "season", "week", "team"], how="anti")
+          .select("game_id", "player_id", "season", "week", "team"), exc)
+
+
+def roster_game_teams(rosters: pl.DataFrame, games: pl.DataFrame) -> pl.DataFrame:
+    """Game-day roster (ACT/INA) rows joined to each team's game: game_id, player_id, team."""
+    return (
+        rosters.filter(pl.col("status").is_in(ROSTER_STATUSES), pl.col("gsis_id").is_not_null())
+        .join(team_games(games), on=["season", "week", "team"])
+        .select("game_id", pl.col("gsis_id").alias("player_id"), "team", "position")
+    )
+
+
+def assign_teams(keys: pl.DataFrame, ps: pl.DataFrame, roster_teams: pl.DataFrame,
+                 snaps_mapped: pl.DataFrame, exc: type[ValueError] = LabelIntegrityError
+                 ) -> tuple[pl.DataFrame, int]:
+    """Team per (game_id, player_id): player_stats, then game-day roster, then snap counts.
+
+    Stats vs roster disagreement fails. Returns keys + team and the count of rows whose snap
+    team differs from the assigned team (snap team is the least reliable source).
+    """
+    on = ["game_id", "player_id"]
+
+    def team_of(df: pl.DataFrame, name: str) -> pl.DataFrame:
+        t = df.select(*on, pl.col("team").alias(name)).unique()
+        _fail(f"players with several {name} values in a game",
+              t.filter(pl.struct(on).is_duplicated()).sort(on), exc)
+        return t
+
+    out = (
+        keys.join(team_of(ps, "stats_team"), on=on, how="left")
+        .join(team_of(roster_teams, "roster_team"), on=on, how="left")
+        .join(team_of(snaps_mapped, "snap_team"), on=on, how="left")
+    )
+    _fail("players whose player_stats team disagrees with the game-day roster",
+          out.filter(pl.col("stats_team") != pl.col("roster_team")).sort(on), exc)
+    out = out.with_columns(pl.coalesce("stats_team", "roster_team", "snap_team").alias("team"))
+    _fail("players with no team in any source", out.filter(pl.col("team").is_null()), exc)
+    snap_mismatch = out.filter(pl.col("snap_team") != pl.col("team")).height
+    return out.drop("stats_team", "roster_team", "snap_team"), snap_mismatch
 
 
 def _incomplete_games(games: pl.DataFrame, ps: pl.DataFrame, sn: pl.DataFrame) -> list[str]:
-    tg = _team_games(games).select("game_id", "team")
+    tg = team_games(games).select("game_id", "team")
     missing = pl.concat([
         tg.join(src.select("game_id", "team").unique(), on=["game_id", "team"], how="anti")
         for src in (ps, sn)
@@ -108,37 +160,13 @@ def _universe(games, ps, sn, id_map, rosters) -> tuple[pl.DataFrame, int]:
     keys = ["game_id", "player_id"]
     from_stats = ps.filter(pl.col("position_group").is_in(SKILL_GROUPS) | _any_market_activity())
     snap_total = pl.col("offense_snaps").fill_null(0) + pl.col("st_snaps").fill_null(0)
-    from_snaps = (
-        sn.filter(pl.col("position").is_in(SKILL_POSITIONS), snap_total > 0)
-        .join(id_map.drop_nulls("gsis_id"), on="pfr_player_id")
-        .rename({"gsis_id": "player_id"})
-    )
-    from_roster = (
-        rosters.filter(pl.col("status").is_in(ROSTER_STATUSES),
-                       pl.col("position").is_in(SKILL_POSITIONS), pl.col("gsis_id").is_not_null())
-        .join(_team_games(games), on=["season", "week", "team"])
-        .rename({"gsis_id": "player_id"})
-    )
-    uni = pl.concat([f.select(keys) for f in (from_stats, from_snaps, from_roster)]).unique()
-
-    def team_of(df: pl.DataFrame, name: str) -> pl.DataFrame:
-        t = df.select(*keys, pl.col("team").alias(name)).unique()
-        _fail(f"players with several {name} values in a game",
-              t.filter(pl.struct(keys).is_duplicated()).sort(keys))
-        return t
-
     snaps_all = sn.join(id_map.drop_nulls("gsis_id"), on="pfr_player_id").rename(
         {"gsis_id": "player_id"})
-    uni = (
-        uni.join(team_of(ps, "stats_team"), on=keys, how="left")
-        .join(team_of(from_roster, "roster_team"), on=keys, how="left")
-        .join(team_of(snaps_all, "snap_team"), on=keys, how="left")
-    )
-    _fail("players whose player_stats team disagrees with the game-day roster",
-          uni.filter(pl.col("stats_team") != pl.col("roster_team")).sort(keys))
-    uni = uni.with_columns(pl.coalesce("stats_team", "roster_team", "snap_team").alias("team"))
-    snap_mismatch = uni.filter(pl.col("snap_team") != pl.col("team")).height
-    return uni.select(*keys, "team"), snap_mismatch
+    from_snaps = snaps_all.filter(pl.col("position").is_in(SKILL_POSITIONS), snap_total > 0)
+    roster_teams = roster_game_teams(rosters, games)
+    from_roster = roster_teams.filter(pl.col("position").is_in(SKILL_POSITIONS))
+    uni = pl.concat([f.select(keys) for f in (from_stats, from_snaps, from_roster)]).unique()
+    return assign_teams(uni, ps, roster_teams, snaps_all)
 
 
 def _provenance_value(frames: list[pl.DataFrame], col: str) -> str:
@@ -166,7 +194,8 @@ def build_labels(
     _fail("player_stats rows without player_id but with market activity",
           quarantined.filter(_any_market_activity()).select("game_id", "team", *STAT_COLUMNS))
     ps = normalize_stats_teams(player_stats.filter(pl.col("player_id").is_not_null()), games)
-    _check_stats(ps, games)
+    check_stats(ps, games)
+    snap_counts = correct_snap_teams(snap_counts)
 
     incomplete = _incomplete_games(games, ps, snap_counts)
     if incomplete and not skip_incomplete:

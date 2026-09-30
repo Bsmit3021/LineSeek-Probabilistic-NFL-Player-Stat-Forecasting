@@ -82,4 +82,7 @@ prediction-time feature. Built by `lineseek.grade.labels`; contract in
   `prop_labels` temporal qualities added.
 - Override `CartNa00` now maps to `00-0040547` (it was excluded, which made two games with
   carries look like non-participation).
+- Phase 3 (ADR 0003): the 2018 Super Bowl snap-team swap is corrected before team resolution
+  (snap-team mismatches 24 → 0, labels unchanged), and `WillRo08` now maps to `00-0037451`,
+  turning Rod Williams' 20 PIT games (2023–24) from `did_not_play` into participation.
 - Downstream projections for players outside the label universe need a universe extension.

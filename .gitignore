@@ -3,6 +3,7 @@
 data/raw/*
 !data/raw/.gitkeep
 data/labels/
+data/features/
 logs/
 __pycache__/
 .venv/

@@ -54,6 +54,8 @@ class Manifest:
     temporal_quality: dict[str, str] = field(default_factory=dict)
     # Upstream snapshots a derived artifact was built from: {source, path, sha256}.
     inputs: list[dict[str, str]] = field(default_factory=list)
+    # Build parameters of a derived artifact (e.g. feature-set version, timing rules).
+    parameters: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=1, sort_keys=True)
@@ -69,6 +71,7 @@ def write_snapshot(
     temporal_quality: dict[str, str] | None = None,
     root: Path | None = None,
     inputs: list[dict[str, str]] | None = None,
+    parameters: dict[str, str] | None = None,
 ) -> Manifest:
     if pulled_at.utcoffset() != timedelta(0):
         raise ValueError("pulled_at must be tz-aware UTC")
@@ -96,6 +99,7 @@ def write_snapshot(
         contract_version=CONTRACT_VERSION,
         temporal_quality=temporal_quality or {},
         inputs=inputs or [],
+        parameters=parameters or {},
     )
     target = root / rel
     target.parent.mkdir(parents=True, exist_ok=True)
