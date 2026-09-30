@@ -70,6 +70,8 @@ SOURCE_TEMPORAL_QUALITY: dict[tuple[str, str], TemporalQuality] = {
     ("depth_charts", "2024_and_earlier"): TemporalQuality.UNKNOWN,
     ("depth_charts", "2025_and_later"): TemporalQuality.EXACT,
     ("rosters_weekly", "status"): TemporalQuality.UNKNOWN,
+    ("players", "ids"): TemporalQuality.UNKNOWN,
+    ("prop_labels", "outcomes"): TemporalQuality.POSTGAME,
     ("odds_api", "prop_lines"): TemporalQuality.EXACT,
 }
 

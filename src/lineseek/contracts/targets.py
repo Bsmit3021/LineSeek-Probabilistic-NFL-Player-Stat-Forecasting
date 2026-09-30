@@ -23,11 +23,21 @@ class Track(StrEnum):
     MARKET = "market"
 
 
+class LabelStatus(StrEnum):
+    """Why a prop_labels row has the `actual` it has (see docs/adr/0002)."""
+
+    RECORDED = "recorded"  # official stats row; played; actual = stat value
+    PARTICIPANT_NO_STATS_ROW = "participant_no_stats_row"  # played, no stats row; actual = 0
+    DID_NOT_PLAY = "did_not_play"  # played is False; actual is null
+
+
 @dataclass(frozen=True)
 class PropMarket:
     key: str
     odds_api_key: str
     stat_column: str
+    # Counts can't be negative; rushing/receiving yards legitimately can.
+    nonnegative: bool
 
     def actual(self) -> pl.Expr:
         """Realized stat for this market, evaluated against a player_stats frame."""
@@ -37,11 +47,11 @@ class PropMarket:
 PROP_MARKETS: dict[str, PropMarket] = {
     m.key: m
     for m in (
-        PropMarket("pass_attempts", "player_pass_attempts", "attempts"),
-        PropMarket("rush_attempts", "player_rush_attempts", "carries"),
-        PropMarket("rush_yds", "player_rush_yds", "rushing_yards"),
-        PropMarket("receptions", "player_receptions", "receptions"),
-        PropMarket("reception_yds", "player_reception_yds", "receiving_yards"),
+        PropMarket("pass_attempts", "player_pass_attempts", "attempts", True),
+        PropMarket("rush_attempts", "player_rush_attempts", "carries", True),
+        PropMarket("rush_yds", "player_rush_yds", "rushing_yards", False),
+        PropMarket("receptions", "player_receptions", "receptions", True),
+        PropMarket("reception_yds", "player_reception_yds", "receiving_yards", False),
     )
 }
 

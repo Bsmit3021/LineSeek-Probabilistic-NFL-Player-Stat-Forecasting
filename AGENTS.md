@@ -10,6 +10,11 @@
     (example launchd plist in `scripts/launchd/`). Schedules are full-season; other sources are
     filtered to the week (depth charts: latest snapshot; stats/snaps: completed games only).
   - `.venv/bin/lineseek-ingest injury-rule-report`
+- Labels (postgame ground truth, never features; ADR 0002), from the latest raw snapshots to
+  `$LINESEEK_LABELS_ROOT` (default `data/labels`, never committed):
+  - `.venv/bin/lineseek-labels build --season 2025` (or `2018-2025`; `--skip-incomplete`)
+  - `.venv/bin/lineseek-labels validate <file.parquet>`
+  - Needs schedules, player_stats, snap_counts, rosters_weekly and players snapshots for the season.
 - Schema drift fails pulls: review, then regenerate with `scripts/freeze_raw_schemas.py` or add a cast in `contracts/raw.py`.
 - Network scripts: `scripts/audit_phase1.py` (nflreadpy), `scripts/odds_api_probe.py` (needs `ODDS_API_KEY`, spends credits).
 - Tests use fixtures in `tests/fixtures/`, never live downloads.

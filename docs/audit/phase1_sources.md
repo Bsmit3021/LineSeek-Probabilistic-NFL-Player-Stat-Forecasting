@@ -53,6 +53,14 @@ Frozen raw schemas are in `src/lineseek/contracts/raw_schemas.json`; regenerate 
   but has injury rows. It is listed explicitly in `ingest/sources.py:CANCELLED_GAMES`.
 - **pbp downloads fail transiently** (connection errors on 2018/2019), so the loader retries.
 
+### Phase 2 additions (2026-09-30)
+
+- `players` (nflverse `load_players`, 24,833 rows) added as a source: the PFR→GSIS map for
+  snap counts depends on it. Roster `pfr_id` alone leaves 24–37 ids unmatched per season.
+- player_stats uses `LV` for the 2018–19 Raiders; schedules, snap counts and rosters use `OAK`.
+- Snap-count `team` is swapped for every row of the 2018 Super Bowl (`2018_21_NE_LA`).
+- Override `CartNa00` (Nate Carter) fixed to `00-0040547`.
+
 ### Backfill (one snapshot per source × season, 2018–2026)
 
 | Source | Rows | Parquet MB |

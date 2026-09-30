@@ -8,6 +8,9 @@ the DuckDB warehouse under the table names below.
 
 import polars as pl
 
+from lineseek.contracts.identifiers import GAME_ID_RE, PLAYER_ID_RE
+from lineseek.contracts.targets import PROP_MARKETS, LabelStatus
+
 UTC_TS = pl.Datetime("us", "UTC")
 
 _PROVENANCE = {
@@ -31,16 +34,19 @@ ARTIFACT_SCHEMAS: dict[str, dict[str, pl.DataType]] = {
         "away_team": pl.String,
         "kickoff_utc": UTC_TS,
     },
-    # Realized labels: one row per (game_id, player_id, market) for every projected player,
-    # including those who missed the game. `actual` is null when there is no stats row;
-    # `played` is the participation flag used by the market track (null until known).
+    # Postgame ground truth, unique on (game_id, player_id, market); never a model input.
+    # `actual` is null only when label_status is did_not_play (see docs/adr/0002).
     "prop_labels": {
         "game_id": pl.String,
         "player_id": pl.String,
+        "season": pl.Int32,
+        "week": pl.Int32,
         "team": pl.String,
+        "opponent": pl.String,
         "market": pl.String,
         "actual": pl.Float64,
         "played": pl.Boolean,
+        "label_status": pl.String,
         **_PROVENANCE,
     },
     # Timestamped sportsbook lines: one row per (event, book, market, player, side, snapshot).
@@ -107,4 +113,53 @@ def validate_frame(df: pl.DataFrame, artifact: str) -> pl.DataFrame:
         leaked = df.filter(pl.col("max_available_at") > pl.col("decision_time")).height
         if leaked:
             raise ContractViolation(f"features: {leaked} row(s) use data after decision_time")
+    if artifact == "prop_labels":
+        _validate_prop_labels(df)
     return df
+
+
+PROP_LABEL_KEY = ("game_id", "player_id", "market")
+
+
+def _validate_prop_labels(df: pl.DataFrame) -> None:
+    """Domain rules for prop_labels; all violations are reported together."""
+    actual, played, status = pl.col("actual"), pl.col("played"), pl.col("label_status")
+    parts = pl.col("game_id").str.split("_")
+    away, home = parts.list.get(2, null_on_oob=True), parts.list.get(3, null_on_oob=True)
+    nonneg = [k for k, m in PROP_MARKETS.items() if m.nonnegative]
+    checks = {
+        "null required column": pl.any_horizontal(
+            pl.col(c).is_null() for c in ARTIFACT_SCHEMAS["prop_labels"] if c != "actual"
+        ),
+        "duplicate (game_id, player_id, market)": pl.struct(PROP_LABEL_KEY).is_duplicated(),
+        "unsupported market": ~pl.col("market").is_in(list(PROP_MARKETS)),
+        "invalid player_id": ~pl.col("player_id").str.contains(PLAYER_ID_RE.pattern),
+        "invalid game_id": ~pl.col("game_id").str.contains(GAME_ID_RE.pattern),
+        "season/week disagree with game_id": (
+            (pl.col("season") != parts.list.get(0, null_on_oob=True).cast(pl.Int32, strict=False))
+            | (pl.col("week") != parts.list.get(1, null_on_oob=True).cast(pl.Int32, strict=False))
+        ),
+        "season/week out of range": (pl.col("season") < 1999) | ~pl.col("week").is_between(1, 22),
+        "team/opponent not the game's two teams": ~(
+            ((pl.col("team") == away) & (pl.col("opponent") == home))
+            | ((pl.col("team") == home) & (pl.col("opponent") == away))
+        ),
+        "temporal_quality is not postgame": pl.col("temporal_quality") != "postgame",
+        "unknown label_status": ~status.is_in([s.value for s in LabelStatus]),
+        "non-finite or non-integer actual": actual.is_not_null()
+        & (~actual.is_finite() | (actual != actual.round())),
+        "negative count market": pl.col("market").is_in(nonneg) & (actual < 0),
+        "recorded row not played or null": (status == LabelStatus.RECORDED)
+        & (~played | actual.is_null()),
+        "participant_no_stats_row not played or nonzero": (
+            status == LabelStatus.PARTICIPANT_NO_STATS_ROW
+        ) & (~played | (actual != 0) | actual.is_null()),
+        "did_not_play row played or has actual": (status == LabelStatus.DID_NOT_PLAY)
+        & (played | actual.is_not_null()),
+    }
+    # Nulls are caught by the null check; other rules only fire on definite violations.
+    counts = df.select(e.fill_null(False).sum().alias(k) for k, e in checks.items())
+    counts = counts.row(0, named=True)
+    problems = [f"{n} row(s) {k}" for k, n in counts.items() if n]
+    if problems:
+        raise ContractViolation("prop_labels: " + "; ".join(problems))

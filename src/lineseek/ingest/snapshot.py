@@ -52,6 +52,8 @@ class Manifest:
     git_revision: str | None
     contract_version: str
     temporal_quality: dict[str, str] = field(default_factory=dict)
+    # Upstream snapshots a derived artifact was built from: {source, path, sha256}.
+    inputs: list[dict[str, str]] = field(default_factory=list)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=1, sort_keys=True)
@@ -66,6 +68,7 @@ def write_snapshot(
     pulled_at: datetime,
     temporal_quality: dict[str, str] | None = None,
     root: Path | None = None,
+    inputs: list[dict[str, str]] | None = None,
 ) -> Manifest:
     if pulled_at.utcoffset() != timedelta(0):
         raise ValueError("pulled_at must be tz-aware UTC")
@@ -92,6 +95,7 @@ def write_snapshot(
         git_revision=git_revision(),
         contract_version=CONTRACT_VERSION,
         temporal_quality=temporal_quality or {},
+        inputs=inputs or [],
     )
     target = root / rel
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -108,8 +112,12 @@ def list_manifests(source: str, season: int | None = None, root: Path | None = N
     return [json.loads(p.read_text()) for p in sorted(base.glob(pattern))]
 
 
-def read_latest(source: str, season: int, root: Path | None = None) -> pl.DataFrame:
+def latest_manifest(source: str, season: int, root: Path | None = None) -> dict:
     manifests = list_manifests(source, season, root)
     if not manifests:
         raise FileNotFoundError(f"no snapshot for {source} season={season}")
-    return pl.read_parquet((root or data_root()) / manifests[-1]["path"])
+    return manifests[-1]
+
+
+def read_latest(source: str, season: int, root: Path | None = None) -> pl.DataFrame:
+    return pl.read_parquet((root or data_root()) / latest_manifest(source, season, root)["path"])

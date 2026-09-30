@@ -149,5 +149,7 @@ SOURCES: dict[str, Source] = {
         Source("rosters_weekly", nfl.load_rosters_weekly, _unknown("rosters_weekly")),
         Source("injuries", nfl.load_injuries, prepare_injuries),
         Source("depth_charts", nfl.load_depth_charts, prepare_depth_charts),
+        # Unpartitioned id reference table, snapshotted per season for PFR->GSIS mapping.
+        Source("players", lambda season: nfl.load_players(), _unknown("players")),
     )
 }

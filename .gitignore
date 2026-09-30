@@ -2,6 +2,7 @@
 *.duckdb.wal
 data/raw/*
 !data/raw/.gitkeep
+data/labels/
 logs/
 __pycache__/
 .venv/

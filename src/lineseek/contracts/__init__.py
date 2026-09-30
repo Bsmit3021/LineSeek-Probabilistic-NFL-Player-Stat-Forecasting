@@ -12,6 +12,7 @@ from lineseek.contracts.identifiers import (
 )
 from lineseek.contracts.targets import (
     PROP_MARKETS,
+    LabelStatus,
     PropMarket,
     Track,
     grade_outcome,
@@ -28,7 +29,7 @@ from lineseek.contracts.temporal import (
     kickoff_utc,
 )
 
-CONTRACT_VERSION = "0.4.0"
+CONTRACT_VERSION = "0.5.0"
 
 __all__ = [
     "ARTIFACT_SCHEMAS",
@@ -39,6 +40,7 @@ __all__ = [
     "SOURCE_TEMPORAL_QUALITY",
     "TEAMS",
     "ContractViolation",
+    "LabelStatus",
     "PropMarket",
     "Provenance",
     "SeasonType",

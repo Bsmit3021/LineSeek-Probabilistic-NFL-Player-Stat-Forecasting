@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 HISTORY_SEASONS = range(2018, 2027)
 WEEKLY_SOURCES = ("schedules", "injuries", "depth_charts", "rosters_weekly", "player_stats",
-                  "snap_counts")
+                  "snap_counts", "players")
 RETRIES = 3
 
 
@@ -99,7 +99,8 @@ def weekly(season: int, week: int, root: Path | None = None) -> list[Manifest]:
     out.append(manifest)
     completed = schedules.filter(pl.col("result").is_not_null())["game_id"].to_list()
     for name in WEEKLY_SOURCES[1:]:
-        m, _ = pull(name, season, weeks=[week], schedules=schedules,
+        weeks = None if name == "players" else [week]  # players is a full id reference table
+        m, _ = pull(name, season, weeks=weeks, schedules=schedules,
                     completed_game_ids=completed, root=root)
         out.append(m)
     return out

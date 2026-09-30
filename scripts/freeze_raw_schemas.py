@@ -18,6 +18,7 @@ REFERENCES = [
     ("injuries/untimestamped", nfl.load_injuries, 2025),
     ("depth_charts/legacy", nfl.load_depth_charts, 2024),
     ("depth_charts/snapshot", nfl.load_depth_charts, 2025),
+    ("players", lambda season: nfl.load_players(), 2025),
 ]
 
 
