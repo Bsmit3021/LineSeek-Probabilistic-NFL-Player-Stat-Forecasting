@@ -346,6 +346,99 @@ def test_rows_available_after_decision_time_are_excluded(feats, histories, keys)
     assert postgame_stats_available_at(kickoffs()[g7]) == kickoffs()[g7] + LAG
 
 
+def test_history_two_seasons_back_never_contributes(feats, histories, keys):
+    # Fake 2023 games (2024 shifted back a year, stats inflated), both as their own history and
+    # mixed into the 2024 history, so the window's season filter itself is exercised.
+    h24 = histories[2024]
+    year = timedelta(days=364)
+
+    def as_2023(df: pl.DataFrame) -> pl.DataFrame:
+        counts = [c for c in df.columns if c.endswith(("attempts", "carries", "rushing_yards",
+                                                       "receptions", "receiving_yards", "targets"))]
+        return df.with_columns(
+            pl.col("game_id").str.replace("^2024_", "2023_"), pl.lit(2023, pl.Int32).alias("season"),
+            pl.col("kickoff_utc") - year, pl.col("available_at") - year,
+            *[pl.col(c) * 10 + 50 for c in counts])
+
+    old = replace(h24, season=2023, appearances=as_2023(h24.appearances),
+                  team_games=as_2023(h24.team_games))
+    mixed = replace(h24, appearances=pl.concat([h24.appearances, old.appearances]),
+                    team_games=pl.concat([h24.team_games, old.team_games]))
+    hist = {2023: old, 2024: mixed, 2025: histories[2025]}
+    assert build_features(2025, keys, hist, frames(2025)["schedules"]).features.equals(feats)
+
+
+def test_team_and_opponent_history_respect_the_availability_boundary(feats, histories, keys):
+    target, g7 = game_of("PHI", 8), game_of("PHI", 7)
+    lock = forecast_time_utc(kickoffs()[target])
+    base = row(feats, HURTS, 8, "pass_attempts")
+    opp = base["opponent"]
+    h25 = histories[2025]
+    opp_last = h25.team_games.filter(pl.col("team") == opp, pl.col("available_at") <= lock).sort(
+        "kickoff_utc")["game_id"][-1]
+    sched = frames(2025)["schedules"]
+
+    def build_with(at):
+        hit = ((pl.col("game_id") == g7) & (pl.col("team") == "PHI")) | (
+            (pl.col("game_id") == opp_last) & (pl.col("team") == opp))
+        tg = h25.team_games.with_columns(
+            pl.when(hit).then(pl.lit(at)).otherwise(pl.col("available_at")).alias("available_at"))
+        hist = {2024: histories[2024], 2025: replace(h25, team_games=tg)}
+        return row(build_features(2025, keys, hist, sched).features, HURTS, 8, "pass_attempts")
+
+    team_cols = [c for c in base if c.startswith(("team_", "opp_"))]
+    at_lock = build_with(lock)
+    assert {c: at_lock[c] for c in team_cols} == {c: base[c] for c in team_cols}
+    late = build_with(lock + timedelta(seconds=1))
+    tot = team_totals().filter(pl.col("team") == "PHI")
+    games = [g for g in eligible([(g, int(g[:4])) for g in tot["game_id"]], target, 2025)
+             if g != g7][:5]
+    assert late["team_pass_att_roll5_mean"] == pytest.approx(
+        tot.filter(pl.col("game_id").is_in(games))["attempts"].mean())
+    assert late["opp_allowed_season_games"] == base["opp_allowed_season_games"] - 1
+
+
+def histories_of_game(game_id: str, team: str) -> list[str]:
+    return season_history(**frames(2025)).appearances.filter(
+        pl.col("game_id") == game_id, pl.col("team") == team)["player_id"].to_list()
+
+
+def test_other_players_change_only_through_team_and_opponent_totals(feats, keys):
+    # A.J. Brown at NYG in week 6; NYG is PHI's opponent again in week 8.
+    brown, g6 = "00-0035676", game_of("PHI", 6)
+    ps = raw("player_stats", 2025).with_columns(
+        pl.when((pl.col("game_id") == g6) & (pl.col("player_id") == brown))
+        .then(pl.col(c) + d).otherwise(pl.col(c)).alias(c)
+        for c, d in (("receiving_yards", 90), ("targets", 10)))
+    changed = rebuild(keys, player_stats=ps)
+    cols = [*FEATURE_COLUMNS, "max_available_at"]
+    diff = feats.select(
+        "player_id", "team", "opponent", "market", "decision_time",
+        pl.concat_list(pl.when(~feats[c].eq_missing(changed[c])).then(pl.lit(c)) for c in cols)
+        .list.drop_nulls().alias("col"),
+    ).explode("col", empty_as_null=False).filter(pl.col("player_id") != brown)
+    mates = histories_of_game(g6, "PHI")
+    expected = (
+        (pl.col("col") == "target_share_roll5") & pl.col("player_id").is_in(mates)
+    ) | (
+        pl.col("col").is_in(["opp_market_allowed_roll5_mean", "opp_market_allowed_season_mean"])
+        & (pl.col("market") == "reception_yds") & (pl.col("opponent") == "NYG")
+    )
+    assert diff.filter(~expected).height == 0
+    assert diff.filter(pl.col("decision_time") < kickoffs()[g6] + LAG).height == 0
+    assert set(diff["col"]) == {"target_share_roll5", "opp_market_allowed_roll5_mean",
+                                "opp_market_allowed_season_mean"}
+
+
+def test_rows_do_not_depend_on_the_rest_of_the_key_universe(feats, histories, keys):
+    sub = keys.filter(pl.col("label_status") != "did_not_play",
+                      pl.col("player_id").str.slice(-1).cast(pl.Int32) % 2 == 0)
+    got = build_features(2025, sub, histories, frames(2025)["schedules"]).features
+    assert 0 < got.height < feats.height
+    assert got.equals(feats.join(sub.select("game_id", "player_id", "market"),
+                                 on=["game_id", "player_id", "market"], how="semi"))
+
+
 def test_every_row_respects_decision_time(feats):
     assert feats.filter(pl.col("max_available_at") > pl.col("decision_time")).height == 0
     assert (feats["decision_time"] < feats["kickoff_utc"]).all()
