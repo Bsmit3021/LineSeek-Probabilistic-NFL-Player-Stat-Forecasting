@@ -4,6 +4,7 @@ data/raw/*
 !data/raw/.gitkeep
 data/labels/
 data/features/
+data/evaluation/
 logs/
 __pycache__/
 .venv/

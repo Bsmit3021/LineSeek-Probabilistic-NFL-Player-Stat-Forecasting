@@ -21,6 +21,15 @@
   - `.venv/bin/lineseek-features validate <file.parquet>`
   - Invariant: a row may only use history with `available_at <= decision_time`; bump
     `FEATURE_SET_VERSION` when feature definitions change.
+- Baselines + walk-forward evaluation (Phase 4A; ADR 0004) to `$LINESEEK_EVALUATION_ROOT`
+  (default `data/evaluation`, never committed); needs features + labels 2018-2025 and the raw
+  snapshots their manifests list:
+  - `.venv/bin/lineseek-baselines build` (frozen: warm-up 2018-2020, OOS 2021-2025)
+  - `.venv/bin/lineseek-baselines validate <run dir>`
+  - Invariants: predictions never read labels (scored only after being frozen); train rows of a
+    fold satisfy `kickoff + 36h <= decision_time`; primary metrics exclude `outcome_only`
+    universe rows; never tune a baseline on 2021-2025 results; bump `BASELINE_SET_VERSION`
+    when baseline formulas or the protocol change.
 - Schema drift fails pulls: review, then regenerate with `scripts/freeze_raw_schemas.py` or add a cast in `contracts/raw.py`.
 - Network scripts: `scripts/audit_phase1.py` (nflreadpy), `scripts/odds_api_probe.py` (needs `ODDS_API_KEY`, spends credits).
 - Tests use fixtures in `tests/fixtures/`, never live downloads.
