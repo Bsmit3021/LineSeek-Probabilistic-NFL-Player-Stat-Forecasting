@@ -6,6 +6,8 @@ data/raw/{source}/season={season}/ alongside a provenance sidecar; derived artif
 the DuckDB warehouse under the table names below.
 """
 
+from itertools import pairwise
+
 import polars as pl
 
 from lineseek.contracts.identifiers import GAME_ID_RE, PLAYER_ID_RE
@@ -131,6 +133,44 @@ ARTIFACT_SCHEMAS: dict[str, dict[str, pl.DataType]] = {
         "feature_set_version": pl.String,
         "model_set_version": pl.String,
     },
+    # Phase 4C distributional forecasts (docs/adr/0006): one row per
+    # (game_id, player_id, market, decision_time, predictor); conditional on participation;
+    # never contains outcomes. predictor: "quantile_lgbm" (q* from quantile LightGBM,
+    # mean_prediction from squared-error LightGBM, p_zero from a classifier) or "empirical".
+    "distribution_predictions": {
+        "game_id": pl.String,
+        "player_id": pl.String,
+        "season": pl.Int32,
+        "week": pl.Int32,
+        "team": pl.String,
+        "opponent": pl.String,
+        "market": pl.String,
+        "kickoff_utc": UTC_TS,
+        "decision_time": UTC_TS,
+        "fold_id": pl.Int32,
+        "predictor": pl.String,
+        "q10": pl.Float64,
+        "q25": pl.Float64,
+        "q50": pl.Float64,
+        "q75": pl.Float64,
+        "q90": pl.Float64,
+        "q10_raw": pl.Float64,
+        "q25_raw": pl.Float64,
+        "q50_raw": pl.Float64,
+        "q75_raw": pl.Float64,
+        "q90_raw": pl.Float64,
+        "crossed_raw": pl.Boolean,
+        "repair_max": pl.Float64,
+        "clipped_quantiles": pl.Int32,
+        "mean_prediction": pl.Float64,
+        "mean_raw": pl.Float64,
+        "p_zero": pl.Float64,
+        "history_n": pl.Int32,
+        "train_rows": pl.Int32,
+        "feature_set_version": pl.String,
+        "model_set_version": pl.String,
+        "distribution_set_version": pl.String,
+    },
     # Walk-forward evaluation folds (docs/adr/0004): one fold per test decision_time; training
     # rows are those whose outcome was available (kickoff + POSTGAME_STATS_LAG) by then.
     "walk_forward_folds": {
@@ -186,10 +226,13 @@ def validate_frame(df: pl.DataFrame, artifact: str) -> pl.DataFrame:
         _validate_folds(df)
     if artifact == "model_predictions":
         _validate_model_predictions(df)
+    if artifact == "distribution_predictions":
+        _validate_distribution_predictions(df)
     return df
 
 
 PROP_LABEL_KEY = ("game_id", "player_id", "market")
+DISTRIBUTION_KEY = ("game_id", "player_id", "market", "decision_time", "predictor")
 MODEL_PREDICTION_KEY = ("game_id", "player_id", "market", "decision_time", "model")
 BASELINE_PREDICTION_KEY = ("game_id", "player_id", "market", "decision_time", "baseline")
 FEATURE_KEY = ("game_id", "player_id", "market", "decision_time")
@@ -315,4 +358,24 @@ def _validate_model_predictions(df: pl.DataFrame) -> None:
         "yards market altered": ~count & (pred != raw),
         "clipped flag inconsistent": pl.col("clipped") != (count & (raw < 0)),
         "no training rows": pl.col("train_rows") <= 0,
+    })
+
+
+def _validate_distribution_predictions(df: pl.DataFrame) -> None:
+    """Grain, no outcomes, ordered quantiles, count-market domain, probabilities in [0, 1]."""
+    leaked = [c for c in LABEL_ONLY_COLUMNS if c in df.columns]
+    if leaked:
+        raise ContractViolation(f"distribution_predictions: label-only column(s): {leaked}")
+    q = [pl.col(c) for c in ("q10", "q25", "q50", "q75", "q90")]
+    count = pl.col("market").is_in([k for k, m in PROP_MARKETS.items() if m.nonnegative])
+    floats = [*q, pl.col("mean_prediction"), pl.col("p_zero")]
+    _raise_violations("distribution_predictions", df, {
+        **_key_checks("distribution_predictions", DISTRIBUTION_KEY, ()),
+        "decision_time not before kickoff": pl.col("decision_time") >= pl.col("kickoff_utc"),
+        "non-finite value": pl.any_horizontal(~e.is_finite() for e in floats),
+        "quantiles not ordered": pl.any_horizontal(a > b for a, b in pairwise(q)),
+        "negative quantile or mean for a count market": count & pl.any_horizontal(
+            e < 0 for e in (*q, pl.col("mean_prediction"))),
+        "p_zero outside [0, 1]": ~pl.col("p_zero").is_between(0, 1),
+        "unknown predictor": ~pl.col("predictor").is_in(["quantile_lgbm", "empirical"]),
     })

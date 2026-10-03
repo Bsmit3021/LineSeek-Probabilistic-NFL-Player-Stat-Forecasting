@@ -36,6 +36,11 @@
   - Invariants: reuse the Phase 4A folds/cohorts/benchmarks unchanged; fit only on available,
     primary-cohort, played rows; model features are `learned.FEATURES` (no ids, no labels);
     no tuning on 2021-2025; bump `MODEL_SET_VERSION` when model families/semantics change.
+- Distributions (Phase 4C; ADR 0006): `.venv/bin/lineseek-distributions build [--phase4a <dir>] [--phase4b <dir>]`
+  (~30 min, 3,850 fits) and `.venv/bin/lineseek-distributions validate <run dir>`. Quantiles are
+  conditional on participation (DNP is never a zero); q50 is a median, `mean_prediction` the mean;
+  quantiles are NOT threshold-calibrated for integer outcomes yet (ADR 0006: Phase 5 NO-GO).
+  Bump `DISTRIBUTION_SET_VERSION` when quantile levels/components/objectives/repair rules change.
 - Canonical artifacts live under `data/` (raw, labels, features, evaluation/phase4a|phase4b|phase4b_audit),
   all git-ignored. Never point `LINESEEK_*` roots at `/tmp`: macOS purges it. Some 2024-2025 raw
   manifests are reconstructed (marked `"reconstructed"`; docs/audit/phase4b_audit.md).

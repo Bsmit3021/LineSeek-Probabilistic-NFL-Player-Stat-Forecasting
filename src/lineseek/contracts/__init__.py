@@ -30,7 +30,7 @@ from lineseek.contracts.temporal import (
     postgame_stats_available_at,
 )
 
-CONTRACT_VERSION = "0.8.0"
+CONTRACT_VERSION = "0.9.0"
 
 __all__ = [
     "ARTIFACT_SCHEMAS",
