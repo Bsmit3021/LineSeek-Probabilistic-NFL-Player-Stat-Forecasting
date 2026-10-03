@@ -171,6 +171,32 @@ ARTIFACT_SCHEMAS: dict[str, dict[str, pl.DataType]] = {
         "model_set_version": pl.String,
         "distribution_set_version": pl.String,
     },
+    # Phase 4C.1 discrete CDF (docs/adr/0007): one row per
+    # (game_id, player_id, market, decision_time, predictor, threshold); p_le = P(Y <= threshold)
+    # conditional on participation, monotone in threshold; never contains outcomes.
+    "cdf_predictions": {
+        "game_id": pl.String,
+        "player_id": pl.String,
+        "season": pl.Int32,
+        "week": pl.Int32,
+        "team": pl.String,
+        "opponent": pl.String,
+        "market": pl.String,
+        "kickoff_utc": UTC_TS,
+        "decision_time": UTC_TS,
+        "fold_id": pl.Int32,
+        "predictor": pl.String,
+        "threshold": pl.Int32,
+        "p_le": pl.Float64,
+        "p_le_raw": pl.Float64,
+        "monotonic_repair": pl.Boolean,
+        "history_n": pl.Int32,
+        "train_rows": pl.Int32,
+        "feature_set_version": pl.String,
+        "model_set_version": pl.String,
+        "distribution_set_version": pl.String,
+        "cdf_set_version": pl.String,
+    },
     # Walk-forward evaluation folds (docs/adr/0004): one fold per test decision_time; training
     # rows are those whose outcome was available (kickoff + POSTGAME_STATS_LAG) by then.
     "walk_forward_folds": {
@@ -228,10 +254,13 @@ def validate_frame(df: pl.DataFrame, artifact: str) -> pl.DataFrame:
         _validate_model_predictions(df)
     if artifact == "distribution_predictions":
         _validate_distribution_predictions(df)
+    if artifact == "cdf_predictions":
+        _validate_cdf_predictions(df)
     return df
 
 
 PROP_LABEL_KEY = ("game_id", "player_id", "market")
+CDF_KEY = ("game_id", "player_id", "market", "decision_time", "predictor", "threshold")
 DISTRIBUTION_KEY = ("game_id", "player_id", "market", "decision_time", "predictor")
 MODEL_PREDICTION_KEY = ("game_id", "player_id", "market", "decision_time", "model")
 BASELINE_PREDICTION_KEY = ("game_id", "player_id", "market", "decision_time", "baseline")
@@ -378,4 +407,20 @@ def _validate_distribution_predictions(df: pl.DataFrame) -> None:
             e < 0 for e in (*q, pl.col("mean_prediction"))),
         "p_zero outside [0, 1]": ~pl.col("p_zero").is_between(0, 1),
         "unknown predictor": ~pl.col("predictor").is_in(["quantile_lgbm", "empirical"]),
+    })
+
+
+def _validate_cdf_predictions(df: pl.DataFrame) -> None:
+    """Grain, no outcomes, probabilities in [0, 1], CDF non-decreasing in the threshold."""
+    leaked = [c for c in LABEL_ONLY_COLUMNS if c in df.columns]
+    if leaked:
+        raise ContractViolation(f"cdf_predictions: label-only column(s): {leaked}")
+    row = ["game_id", "player_id", "market", "decision_time", "predictor"]
+    p = pl.col("p_le")
+    _raise_violations("cdf_predictions", df.sort(*row, "threshold"), {
+        **_key_checks("cdf_predictions", CDF_KEY, ()),
+        "decision_time not before kickoff": pl.col("decision_time") >= pl.col("kickoff_utc"),
+        "probability outside [0, 1]": ~p.is_between(0, 1) | ~pl.col("p_le_raw").is_between(0, 1),
+        "CDF decreasing in threshold": p.diff().over(row) < 0,
+        "unknown predictor": ~pl.col("predictor").is_in(["cdf_lgbm", "empirical"]),
     })

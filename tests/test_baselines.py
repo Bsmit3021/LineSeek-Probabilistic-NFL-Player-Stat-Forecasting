@@ -257,7 +257,7 @@ def test_predictions_are_deterministic_unique_and_frozen(run, world):
                        "baseline_predictions")
     assert BASELINES == ("prev_game", "roll3_mean", "roll5_mean", "roll8_mean", "season_mean",
                          "ewma_span5")
-    assert BASELINE_SET_VERSION == "1.0.0" and CONTRACT_VERSION == "0.9.0"
+    assert BASELINE_SET_VERSION == "1.0.0" and CONTRACT_VERSION == "0.10.0"
     assert set(run.predictions["baseline_set_version"]) == {BASELINE_SET_VERSION}
 
 
