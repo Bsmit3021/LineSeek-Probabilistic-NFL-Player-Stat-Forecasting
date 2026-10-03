@@ -217,9 +217,11 @@ def score(predictions: pl.DataFrame, labels: dict[int, pl.DataFrame], cohorts: p
     return out
 
 
-def compute_metrics(scored: pl.DataFrame, eval_seasons: tuple[int, ...]) -> pl.DataFrame:
-    """cohort x track x view x market x baseline over (each season | all seasons) and, for all
-    seasons, each history bucket."""
+def compute_metrics(scored: pl.DataFrame, eval_seasons: tuple[int, ...],
+                    names: tuple[str, ...] = BASELINES, name_col: str = "baseline"
+                    ) -> pl.DataFrame:
+    """cohort x track x view x market x predictor over (each season | all seasons) and, for all
+    seasons, each history bucket. Phase 4B reuses it with its own predictor names/column."""
     period_all = f"{min(eval_seasons)}-{max(eval_seasons)}"
     parts = []
     for cohort in COHORTS:
@@ -229,7 +231,7 @@ def compute_metrics(scored: pl.DataFrame, eval_seasons: tuple[int, ...]) -> pl.D
                 pl.when(pl.col("common_support")).then(pl.col("prediction")).alias("prediction"))
             for track in TRACKS:
                 a = f"actual_{track}"
-                base = ["market", "baseline"]
+                base = ["market", name_col]
                 tags = [pl.lit(cohort).alias("cohort"), pl.lit(track).alias("track"),
                         pl.lit(view).alias("view")]
                 by_season = error_metrics(v.with_columns(pl.col("season").cast(pl.String)
@@ -241,9 +243,11 @@ def compute_metrics(scored: pl.DataFrame, eval_seasons: tuple[int, ...]) -> pl.D
                 for df, bucket in ((by_season, "all"), (overall, "all"), (buckets, None)):
                     if bucket:
                         df = df.with_columns(pl.lit(bucket).alias("history_bucket"))
-                    parts.append(df.with_columns(tags).select(*METRIC_GRAIN, *METRIC_COLUMNS))
-    out = pl.concat(parts)
-    return out.sort(*ORDER_KEYS[:5], "period", _rank("history_bucket", BUCKET_ORDER))
+                    parts.append(df.with_columns(tags).select(
+                        *(name_col if c == "baseline" else c for c in METRIC_GRAIN),
+                        *METRIC_COLUMNS))
+    return pl.concat(parts).sort(*ORDER_KEYS[:4], _rank(name_col, names), "period",
+                                 _rank("history_bucket", BUCKET_ORDER))
 
 
 def compare(scored: pl.DataFrame, metrics: pl.DataFrame, eval_seasons: tuple[int, ...]

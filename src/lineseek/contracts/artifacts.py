@@ -109,6 +109,28 @@ ARTIFACT_SCHEMAS: dict[str, dict[str, pl.DataType]] = {
         "feature_set_version": pl.String,
         "baseline_set_version": pl.String,
     },
+    # Phase 4B learned point forecasts (docs/adr/0005): one row per
+    # (game_id, player_id, market, decision_time, model); never contains outcomes.
+    "model_predictions": {
+        "game_id": pl.String,
+        "player_id": pl.String,
+        "season": pl.Int32,
+        "week": pl.Int32,
+        "team": pl.String,
+        "opponent": pl.String,
+        "market": pl.String,
+        "kickoff_utc": UTC_TS,
+        "decision_time": UTC_TS,
+        "fold_id": pl.Int32,
+        "model": pl.String,
+        "prediction_raw": pl.Float64,
+        "prediction": pl.Float64,
+        "clipped": pl.Boolean,
+        "train_rows": pl.Int32,
+        "feature_count": pl.Int32,
+        "feature_set_version": pl.String,
+        "model_set_version": pl.String,
+    },
     # Walk-forward evaluation folds (docs/adr/0004): one fold per test decision_time; training
     # rows are those whose outcome was available (kickoff + POSTGAME_STATS_LAG) by then.
     "walk_forward_folds": {
@@ -162,10 +184,13 @@ def validate_frame(df: pl.DataFrame, artifact: str) -> pl.DataFrame:
         _validate_baseline_predictions(df)
     if artifact == "walk_forward_folds":
         _validate_folds(df)
+    if artifact == "model_predictions":
+        _validate_model_predictions(df)
     return df
 
 
 PROP_LABEL_KEY = ("game_id", "player_id", "market")
+MODEL_PREDICTION_KEY = ("game_id", "player_id", "market", "decision_time", "model")
 BASELINE_PREDICTION_KEY = ("game_id", "player_id", "market", "decision_time", "baseline")
 FEATURE_KEY = ("game_id", "player_id", "market", "decision_time")
 # Target-game outcomes; their presence in a feature artifact is a leak by construction.
@@ -272,4 +297,22 @@ def _validate_folds(df: pl.DataFrame) -> None:
                                          + pl.col("test_rows_outcome_admitted")
                                          != pl.col("test_rows")),
         "train primary rows exceed train rows": pl.col("train_rows_primary") > pl.col("train_rows"),
+    })
+
+
+def _validate_model_predictions(df: pl.DataFrame) -> None:
+    """Grain, identifiers, no outcomes, count-market clipping and decision-time rules."""
+    leaked = [c for c in LABEL_ONLY_COLUMNS if c in df.columns]
+    if leaked:
+        raise ContractViolation(f"model_predictions: label-only column(s) present: {leaked}")
+    raw, pred = pl.col("prediction_raw"), pl.col("prediction")
+    count = pl.col("market").is_in([k for k, m in PROP_MARKETS.items() if m.nonnegative])
+    _raise_violations("model_predictions", df, {
+        **_key_checks("model_predictions", MODEL_PREDICTION_KEY, ()),
+        "decision_time not before kickoff": pl.col("decision_time") >= pl.col("kickoff_utc"),
+        "non-finite prediction": ~raw.is_finite() | ~pred.is_finite(),
+        "count market not max(0, raw)": count & (pred != pl.max_horizontal(raw, pl.lit(0.0))),
+        "yards market altered": ~count & (pred != raw),
+        "clipped flag inconsistent": pl.col("clipped") != (count & (raw < 0)),
+        "no training rows": pl.col("train_rows") <= 0,
     })

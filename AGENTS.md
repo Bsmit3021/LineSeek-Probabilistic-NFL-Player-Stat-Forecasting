@@ -30,6 +30,12 @@
     fold satisfy `kickoff + 36h <= decision_time`; primary metrics exclude `outcome_only`
     universe rows; never tune a baseline on 2021-2025 results; bump `BASELINE_SET_VERSION`
     when baseline formulas or the protocol change.
+- Learned point models (Phase 4B; ADR 0005; needs the `mr2` extra: `pip install -e '.[dev,mr2]'`):
+  - `.venv/bin/lineseek-models build [--phase4a <run dir>]` (default: latest Phase 4A run under
+    `$LINESEEK_EVALUATION_ROOT`); `.venv/bin/lineseek-models validate <run dir>`
+  - Invariants: reuse the Phase 4A folds/cohorts/benchmarks unchanged; fit only on available,
+    primary-cohort, played rows; model features are `learned.FEATURES` (no ids, no labels);
+    no tuning on 2021-2025; bump `MODEL_SET_VERSION` when model families/semantics change.
 - Schema drift fails pulls: review, then regenerate with `scripts/freeze_raw_schemas.py` or add a cast in `contracts/raw.py`.
 - Network scripts: `scripts/audit_phase1.py` (nflreadpy), `scripts/odds_api_probe.py` (needs `ODDS_API_KEY`, spends credits).
 - Tests use fixtures in `tests/fixtures/`, never live downloads.

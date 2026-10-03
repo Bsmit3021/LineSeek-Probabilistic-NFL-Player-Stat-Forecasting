@@ -61,7 +61,8 @@ def error_metrics(df: pl.DataFrame, by: list[str], actual: str) -> pl.DataFrame:
     scored = eligible & pl.col("prediction").is_not_null()
     err = (pl.col("prediction") - pl.col(actual)).filter(scored)
     n_elig, n_pred = eligible.sum().cast(pl.Int64), scored.sum().cast(pl.Int64)
-    return df.group_by(by).agg(
+    # maintain_order also keeps float reductions on Polars' bit-stable path.
+    return df.group_by(by, maintain_order=True).agg(
         pl.len().cast(pl.Int64).alias("n_rows"),
         n_elig.alias("n_eligible"),
         n_pred.alias("n_predicted"),

@@ -79,3 +79,19 @@ def classify_universe(
     return out.select(*pg, "season", "admission_path",
                       (pl.col("admission_path") == OUTCOME_ADMITTED).alias("outcome_admitted")
                       ).sort(pg)
+
+
+def qb_role(keys: pl.DataFrame, schedules: pl.DataFrame, rosters_weekly: pl.DataFrame
+            ) -> pl.DataFrame:
+    """(game_id, player_id, qb_role): game-day roster (ACT/INA) position is QB.
+
+    Evaluation diagnostic only (roster-conditioned, published after the Wednesday lock); never a
+    model input. Uses no statistics of the target game.
+    """
+    games = schedules.filter(pl.col("result").is_not_null()).select(
+        "game_id", "season", "week", "home_team", "away_team")
+    qbs = roster_game_teams(rosters_weekly, games).filter(pl.col("position") == "QB").select(
+        "game_id", "player_id").unique().with_columns(pl.lit(True).alias("qb_role"))
+    return keys.select("game_id", "player_id").unique().join(
+        qbs, on=["game_id", "player_id"], how="left").with_columns(
+        pl.col("qb_role").fill_null(False)).sort("game_id", "player_id")
