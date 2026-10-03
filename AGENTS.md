@@ -36,6 +36,9 @@
   - Invariants: reuse the Phase 4A folds/cohorts/benchmarks unchanged; fit only on available,
     primary-cohort, played rows; model features are `learned.FEATURES` (no ids, no labels);
     no tuning on 2021-2025; bump `MODEL_SET_VERSION` when model families/semantics change.
+- Canonical artifacts live under `data/` (raw, labels, features, evaluation/phase4a|phase4b|phase4b_audit),
+  all git-ignored. Never point `LINESEEK_*` roots at `/tmp`: macOS purges it. Some 2024-2025 raw
+  manifests are reconstructed (marked `"reconstructed"`; docs/audit/phase4b_audit.md).
 - Schema drift fails pulls: review, then regenerate with `scripts/freeze_raw_schemas.py` or add a cast in `contracts/raw.py`.
 - Network scripts: `scripts/audit_phase1.py` (nflreadpy), `scripts/odds_api_probe.py` (needs `ODDS_API_KEY`, spends credits).
 - Tests use fixtures in `tests/fixtures/`, never live downloads.

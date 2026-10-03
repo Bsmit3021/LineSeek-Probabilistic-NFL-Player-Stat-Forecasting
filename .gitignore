@@ -5,6 +5,7 @@ data/raw/*
 data/labels/
 data/features/
 data/evaluation/
+data/MIGRATION_*
 logs/
 __pycache__/
 .venv/
