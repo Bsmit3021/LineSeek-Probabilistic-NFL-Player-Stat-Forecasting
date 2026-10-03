@@ -169,11 +169,33 @@ cohort, Ridge *beats* the benchmark (MAE 7.93 vs 8.18). The label stands under t
 - **Bias:** the L1 objective produces a conditional median, so LightGBM sits well below the
   mean: −2.25 rushing yards, −4.66 receiving yards and −0.31 rush attempts, vs benchmark biases
   of −0.43, +0.10 and −0.02.
-- **How much of the gain is the median effect** (analysis only, not a benchmark): the
-  deterministic `market_season_median` improves MAE only modestly. Rushing yards go to 6.086
-  (about 30% of LightGBM's gain), receiving yards to 13.150 (about 22%), and it is no better on
-  attempts. Most of LightGBM's gain is therefore usage and history signal, not loss alignment.
-  Phase 4C must treat LightGBM's point forecast as a median, not an expectation.
+- **How much of the gain is the median effect** (corrected by the Phase 4B audit,
+  `docs/audit/phase4b_audit.md`). The original claim here — "most of the gain is usage/history
+  signal, not loss alignment" — was **wrong**. It relied on `market_season_median`, which is a
+  weak median estimator. The controlled diagnostic instead retrains LightGBM with the squared-error
+  objective and the same folds, features and parameters. Measured as MAE change vs the benchmark
+  (primary cohort, participant track, common support, game-clustered 95% CI):
+
+  | Market | L2 LightGBM vs benchmark | L1 vs L2 | Share of L1 gain from the objective |
+  |---|---|---|---|
+  | pass_attempts | −0.022 [−0.039, −0.005] | −0.039 | 64% |
+  | rush_attempts | +0.021 [+0.012, +0.029] | −0.090 | ~130% |
+  | rush_yds | +0.090 [+0.031, +0.148] | −0.655 | ~116% |
+  | receptions | −0.003 [−0.008, +0.002] | −0.064 | 96% |
+  | reception_yds | −0.081 [−0.149, −0.009] | −1.081 | 93% |
+
+  - **Most of LightGBM's MAE advantage is the median estimand**, which MAE rewards, rather than
+    better information about the mean.
+  - As a mean forecaster with the same features, LightGBM ties or loses to the deterministic
+    benchmarks on MAE in 3 of 5 markets.
+  - On RMSE (the mean-appropriate metric), every learned model beats the benchmarks, and Ridge
+    is best in 4 of 5 markets.
+  - L1 LightGBM remains a strong *conditional median* forecaster: it beats the naive season
+    median clearly, for example 5.686 vs 6.086 rushing yards.
+  - The Phase 4A benchmark set has only mean-type estimators, so the frozen MAE promotion rule
+    cannot separate estimand alignment from feature signal.
+  - Phase 4C must treat LightGBM's output as a median, not an expectation, and must compare
+    models with proper scoring rules for the target quantity.
 - **Ablation:** history-only LightGBM gets 75–80% of the full model's gain, for example rushing
   yards −0.453 vs −0.565. The Phase 3 context (shares, snaps, team, opponent) adds a smaller
   but clearly separable improvement.
@@ -188,7 +210,8 @@ cohort, Ridge *beats* the benchmark (MAE 7.93 vs 8.18). The label stands under t
 - **Largest errors** are legitimate: backup QB starts, injuries and early exits, role changes,
   breakouts and explosive games. LightGBM shrinks stars toward the median (for example Barkley
   81 vs the benchmark's 114 against an actual of 255).
-- **Selected point model for Phase 4C:** `lightgbm` for all five markets (PROMOTE, lowest MAE).
+- **Selected point model for Phase 4C:** `lightgbm` for all five markets (PROMOTE, lowest MAE). Its
+  role is a conditional-median signal; see the audit correction above.
 
 ## Limitations (carried with every result)
 
