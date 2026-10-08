@@ -25,6 +25,7 @@ lineseek-baselines = "lineseek.evaluation.cli:main"
 lineseek-models = "lineseek.evaluation.models_cli:main"
 lineseek-distributions = "lineseek.evaluation.distributions_cli:main"
 lineseek-cdf = "lineseek.evaluation.cdf_cli:main"
+lineseek-cdf-tc = "lineseek.evaluation.cdf_tc_cli:main"
 
 [project.optional-dependencies]
 mr2 = ["lightgbm==4.7.0"]

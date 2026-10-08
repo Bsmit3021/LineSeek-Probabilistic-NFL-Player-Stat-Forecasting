@@ -422,5 +422,5 @@ def _validate_cdf_predictions(df: pl.DataFrame) -> None:
         "decision_time not before kickoff": pl.col("decision_time") >= pl.col("kickoff_utc"),
         "probability outside [0, 1]": ~p.is_between(0, 1) | ~pl.col("p_le_raw").is_between(0, 1),
         "CDF decreasing in threshold": p.diff().over(row) < 0,
-        "unknown predictor": ~pl.col("predictor").is_in(["cdf_lgbm", "empirical"]),
+        "unknown predictor": ~pl.col("predictor").is_in(["cdf_lgbm", "cdf_tc", "empirical"]),
     })
