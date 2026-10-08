@@ -44,7 +44,7 @@
 - Discrete CDF (Phase 4C.1; ADR 0007, official NOT READY, never rewritten): `.venv/bin/lineseek-cdf build`
   (~1 h 45 min, 14,300 fits). Final gate Phase 4C.1b (ADR 0008; no Phase 4C.1c):
   `.venv/bin/lineseek-cdf-tc build [--phase4a|--phase4c|--phase4c1 <dir>] [--workers 2]`
-  (550 threshold-conditioned monotone fits; 2 single-threaded workers to avoid swap on 8 GB) and
+  (~70 min, 550 threshold-conditioned monotone fits; 2 single-threaded workers to avoid swap on 8 GB; result: 4 READY + pass_attempts CONDITIONAL, Phase 5 CONDITIONAL GO) and
   `.venv/bin/lineseek-cdf-tc validate <run dir>`. Reuses the frozen Phase 4C.1 grid and its
   cdf_lgbm/empirical predictions as comparators; bump `TC_CDF_SET_VERSION` on any model change.
 - Canonical artifacts live under `data/` (raw, labels, features, evaluation/phase4a|phase4b|phase4b_audit|phase4c|phase4c1|phase4c1b),
